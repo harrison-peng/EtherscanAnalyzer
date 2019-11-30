@@ -1,0 +1,11 @@
+.DS_Store
+.vscode
+__pycache__/
+*.pyc
+
+bytecode/
+contracts/
+sourcecode/
+
+bytecode_check_list.json
+sourcecode_check_list.json

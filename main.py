@@ -2,7 +2,7 @@ import os
 import requests
 import json
 from bs4 import BeautifulSoup
-from subprocess import call
+from subprocess import call, check_output
 
 def etherscan():
     base_url = 'https://etherscan.io'
@@ -67,7 +67,8 @@ def create_check_list():
     check_list = dict()
     root_path = os.path.dirname(os.path.abspath(__file__))
     for file_name in os.listdir(os.path.join(root_path, 'bytecode')):
-        check_list[file_name] = False
+        item = {'check': False}
+        check_list[file_name] = item
     with  open('./bytecode_check_list.json', 'w') as f:
         f.write(json.dumps(check_list))
 
@@ -77,14 +78,17 @@ def analyze():
 
     root_path = os.path.dirname(os.path.abspath(__file__))
     for file_name in os.listdir(os.path.join(root_path, 'bytecode')):
-        if not check_list[file_name]:
+        if not check_list[file_name]['check']:
             abs_path = os.path.join(root_path, 'bytecode', file_name)
-            call(['python', '/Users/Harrison/Documents/Research/SmartContractCFG/main.py', '-b', '-r', '-code', abs_path, '-o', '/Users/Harrison/Desktop/contract-library'])
-            check_list[file_name] = True
+            output = check_output(['python', '/Users/Harrison/Documents/Research/SmartContractCFG/main.py', '-b', '-r', '-code', abs_path, '-o', '/Users/Harrison/Desktop/contract-library']).decode("utf-8").replace('\n', '')
+            gas_type = ''.join(i for i in output if not i.isdigit())
+            check_list[file_name]['check'] = True
+            check_list[file_name]['gas_type'] = gas_type
             with  open('./bytecode_check_list.json', 'w') as f:
                 f.write(json.dumps(check_list))
 
 
 if __name__ == '__main__':
 	# contract_library()
+    # create_check_list()
     analyze()

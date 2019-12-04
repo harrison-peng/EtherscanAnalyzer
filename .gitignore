@@ -7,5 +7,7 @@ bytecode/
 contracts/
 sourcecode/
 
+DB_Settings.py
+
 bytecode_check_list.json
 sourcecode_check_list.json

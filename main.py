@@ -1,8 +1,16 @@
 import os
 import requests
 import json
+import time
+from pymongo import MongoClient
 from bs4 import BeautifulSoup
-from subprocess import call, check_output
+from subprocess import call
+from DB_Settings import *
+
+client = MongoClient(MONGODB_URL, MONGODB_PORT, retryWrites=False)
+db = client[DB_NAME]
+db.authenticate(DB_USER, DB_PASSWORD)
+collection = db[COLLECTION_NAME]
 
 def etherscan():
     base_url = 'https://etherscan.io'
@@ -26,20 +34,26 @@ def etherscan():
                     f.write(contract.text)
 
 def get_bytecode_by_address(address):
+    sourcecode_list = list()
+    bytecode_list = list()
     url = 'https://etherscan.io/address/%s#code' % address
     user_agent = {'User-agent': 'Mozilla/5.0'}
     html = requests.get(url, headers=user_agent)
+    time.sleep(1)
     soup = BeautifulSoup(html.content, 'html.parser')
-    code = soup.find('pre', attrs={'id': 'editor'})
-    sourcecode_list = list()
-    bytecode_list = list()
+    time.sleep(1)
+    code = soup.find('div', attrs={'id': 'verifiedbytecode2'})
     if code:
+        print('FIND CODE')
+        print(code)
         if code not in sourcecode_list:
             sourcecode_list.append(code)
-            with open('./sourcecode/%s.sol' % address, 'w') as f:
+            with open('./bytecode_2/%s.hex' % address, 'w') as f:
                 f.write(code.text)
     else:
         code = soup.find('pre', attrs={'class': 'wordwrap'})
+        print('NOT FIND CODE')
+        print(code)
         if code not in bytecode_list:
             sourcecode_list.append(code)
             with open('./bytecode/%s.hex' % address, 'w') as f:
@@ -50,10 +64,11 @@ def contract_library():
     address = list()
     base_url = 'https://contract-library.com/?w=DoS%20(Unbounded%20Operation)'
 
-    for page in range(20):
+    for page in range(50):
         driver = webdriver.Chrome('./chromedriver')
         url = base_url + '&p=' + str(page+1)
         driver.get(url)
+        time.sleep(3)
         table = driver.find_element_by_class_name('table-striped').find_element_by_tag_name('tbody')
         row = table.find_elements_by_tag_name('tr')
         for column in row:
@@ -63,32 +78,52 @@ def contract_library():
             address.append(addr)
         driver.close()
 
-def create_check_list():
-    check_list = dict()
+def insert_check_list():
     root_path = os.path.dirname(os.path.abspath(__file__))
     for file_name in os.listdir(os.path.join(root_path, 'bytecode')):
-        item = {'check': False}
-        check_list[file_name] = item
-    with  open('./bytecode_check_list.json', 'w') as f:
-        f.write(json.dumps(check_list))
+        address = file_name.split('.')[0]
+        contract = collection.find_one({'_id': address})
+        print('address:', address)
+        
+        with open(os.path.join(root_path, 'bytecode/%s' % file_name), 'r') as f:
+            bytecode = f.read()
+        print(bytecode)
+        if contract:
+            update_item = {'$set': {'bytecode': bytecode}}
+            resp = collection.update({'_id': address}, update_item)
+        else:
+            new_item = {'_id': address, 'check': 'unchecked', 'gas_type': '', 'bytecode': bytecode}
+            resp = collection.insert(new_item)
 
 def analyze():
-    with open('./bytecode_check_list.json', 'r') as f:
-        check_list = json.loads(f.read())
-
+    print('Start')
     root_path = os.path.dirname(os.path.abspath(__file__))
-    for file_name in os.listdir(os.path.join(root_path, 'bytecode')):
-        if not check_list[file_name]['check']:
-            abs_path = os.path.join(root_path, 'bytecode', file_name)
-            output = check_output(['python', '/Users/Harrison/Documents/Research/SmartContractCFG/main.py', '-b', '-r', '-code', abs_path, '-o', '/Users/Harrison/Desktop/contract-library']).decode("utf-8").replace('\n', '')
-            gas_type = ''.join(i for i in output if not i.isdigit())
-            check_list[file_name]['check'] = True
-            check_list[file_name]['gas_type'] = gas_type
-            with  open('./bytecode_check_list.json', 'w') as f:
-                f.write(json.dumps(check_list))
+    check_list = collection.find()
+    for item in check_list:
+        print(item)
+        address = item['_id']
+        check = item['check']
+        if check == 'unchecked':
+            print(address)
+            file_path = os.path.join(root_path, 'bytecode', '%s.hex' % address)
+            with open(file_path, 'w') as f:
+                f.write(item['bytecode'])
+
+            call(['python', '/Users/Harrison/Documents/Research/SmartContractCFG/main.py', '-b', '-r', '-code', file_path, '-o', '/Users/Harrison/Desktop/contract-library'])
+            
+            if os.path.isfile('/Users/Harrison/Desktop/contract-library/%s/gas_type.txt' % address):
+                with open('/Users/Harrison/Desktop/contract-library/%s/gas_type.txt' % address, 'r') as f:
+                    gas_type = f.read()
+                update_value = {'$set': {'check': 'checked', 'gas_type': gas_type}}
+            else:
+                update_value = {'$set': {'check': 'error'}}
+
+            collection.update({'_id': address}, update_value)
+
+            call(['rm', file_path])
 
 
 if __name__ == '__main__':
 	# contract_library()
-    # create_check_list()
+    # insert_check_list()
     analyze()

@@ -96,14 +96,13 @@ def insert_check_list():
             resp = collection.insert(new_item)
 
 def analyze():
-    print('Start')
     root_path = os.path.dirname(os.path.abspath(__file__))
     check_list = collection.find()
     for item in check_list:
-        print(item)
+        # print(item)
         address = item['_id']
-        check = item['check']
-        if check == 'unchecked':
+        check = item['status']
+        if check == 'error':
             print(address)
             file_path = os.path.join(root_path, 'bytecode', '%s.hex' % address)
             with open(file_path, 'w') as f:
@@ -113,17 +112,42 @@ def analyze():
             
             if os.path.isfile('/Users/Harrison/Desktop/contract-library/%s/gas_type.txt' % address):
                 with open('/Users/Harrison/Desktop/contract-library/%s/gas_type.txt' % address, 'r') as f:
-                    gas_type = f.read()
-                update_value = {'$set': {'check': 'checked', 'gas_type': gas_type}}
+                    results = f.readlines()
+                    gas_type = results[0].strip()
+                    max_gas = results[1].strip()
+                    ins_num = results[2].strip()
+                    node_num = results[3].strip()
+                    edge_num = results[4].strip()
+
+                update_value = {'$set': {'status': 'checked', 'gas_type': gas_type, 'max_gas': max_gas, 'instruction_number': ins_num, 'node_number': node_num, 'edge_number': edge_num}}
+            elif os.path.isfile('/Users/Harrison/Desktop/contract-library/%s/error.txt' % address):
+                with open('/Users/Harrison/Desktop/contract-library/%s/error.txt' % address, 'r') as f:
+                    error = f.read()
+                update_value = {'$set': {'status': 'error', 'gas_type': '', 'max_gas': '', 'instruction_number': '', 'node_number': '', 'edge_number': '', 'error': error}}
             else:
-                update_value = {'$set': {'check': 'error'}}
+                update_value = {'$set': {'status': 'error', 'gas_type': '', 'max_gas': '', 'instruction_number': '', 'node_number': '', 'edge_number': '', 'error': None}}
 
             collection.update({'_id': address}, update_value)
 
             call(['rm', file_path])
 
+def fix_db():
+    check_list = collection.find()
+    for item in check_list:
+        address = item['_id']
+        if os.path.isfile('/Users/Harrison/Desktop/contract-library/%s/%s.txt' % (address, address)):
+            with open('/Users/Harrison/Desktop/contract-library/%s/%s.txt' % (address, address), 'r') as f:
+                results = f.readlines()
+                ins_num = results[1].split(': ')[1].strip()
+                node_num = results[2].split(': ')[1].strip()
+                edge_num = results[3].split(': ')[1].strip()
+                max_gas = results[7].split(': ')[1].strip()
+            update_value = {'$set': {'max_gas': max_gas, 'instruction_number': ins_num, 'node_number': node_num, 'edge_number': edge_num}}
+            collection.update({'_id': address}, update_value)
 
 if __name__ == '__main__':
 	# contract_library()
     # insert_check_list()
     analyze()
+    # insert_gas()
+    # fix_db()

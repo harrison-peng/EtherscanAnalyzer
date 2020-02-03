@@ -6,6 +6,7 @@ from pymongo import MongoClient
 from bs4 import BeautifulSoup
 from subprocess import call
 from DB_Settings import *
+from Settings import *
 
 client = MongoClient(MONGODB_URL, MONGODB_PORT, retryWrites=False)
 db = client[DB_NAME]
@@ -44,29 +45,24 @@ def get_bytecode_by_address(address):
     time.sleep(1)
     code = soup.find('div', attrs={'id': 'verifiedbytecode2'})
     if code:
-        print('FIND CODE')
-        print(code)
         if code not in sourcecode_list:
             sourcecode_list.append(code)
-            with open('./bytecode_2/%s.hex' % address, 'w') as f:
-                f.write(code.text)
+            bytecode = code.text
     else:
         code = soup.find('pre', attrs={'class': 'wordwrap'})
-        print('NOT FIND CODE')
-        print(code)
         if code not in bytecode_list:
             sourcecode_list.append(code)
-            with open('./bytecode/%s.hex' % address, 'w') as f:
-                f.write(code.text)
+            bytecode = code.text
+    return bytecode
 
 def contract_library():
     from selenium import webdriver
-    address = list()
-    base_url = 'https://contract-library.com/?w=DoS%20(Unbounded%20Operation)'
+    # address = list()
+    base_url = 'https://contract-library.com/'
 
-    for page in range(50):
+    for page in range(50,100):
         driver = webdriver.Chrome('./chromedriver')
-        url = base_url + '&p=' + str(page+1)
+        url = base_url + '?p=' + str(page+1)
         driver.get(url)
         time.sleep(3)
         table = driver.find_element_by_class_name('table-striped').find_element_by_tag_name('tbody')
@@ -74,9 +70,19 @@ def contract_library():
         for column in row:
             addr = column.find_elements_by_tag_name('td')[0].text
             print(addr)
-            get_bytecode_by_address(addr)
-            address.append(addr)
+            byte_code = get_bytecode_by_address(addr)
+            insert_new_contract_to_db(addr, byte_code)
+            # address.append(addr)
         driver.close()
+
+def insert_new_contract_to_db(address, bytecode):
+    contract = collection.find_one({'_id': address})
+    if not contract:
+        print('Insert')
+        new_item = {'_id': address, 'status': 'unchecked', 'gas_type': None, 'error': None, 'bytecode': bytecode}
+        resp = collection.insert_one(new_item)
+    else:
+        print('Exist')
 
 def insert_check_list():
     root_path = os.path.dirname(os.path.abspath(__file__))
@@ -97,21 +103,20 @@ def insert_check_list():
 
 def analyze():
     root_path = os.path.dirname(os.path.abspath(__file__))
-    check_list = collection.find()
-    for item in check_list:
-        # print(item)
-        address = item['_id']
-        check = item['status']
-        if check == 'error':
+    contract = collection.find_one({'status': 'unchecked'})
+    while contract:
+        address = contract['_id']
+        if contract['bytecode']:
+            check = contract['status']
             print(address)
             file_path = os.path.join(root_path, 'bytecode', '%s.hex' % address)
             with open(file_path, 'w') as f:
-                f.write(item['bytecode'])
+                f.write(contract['bytecode'])
 
-            call(['python', '/Users/Harrison/Documents/Research/SmartContractCFG/main.py', '-b', '-r', '-code', file_path, '-o', '/Users/Harrison/Desktop/contract-library'])
+            call(['python', '%s/main.py' % SMARTCONTRACTCFG_PATH, '-b', '-r', '-code', file_path, '-o', ANALYSIS_RESULT_PATH])
             
-            if os.path.isfile('/Users/Harrison/Desktop/contract-library/%s/gas_type.txt' % address):
-                with open('/Users/Harrison/Desktop/contract-library/%s/gas_type.txt' % address, 'r') as f:
+            if os.path.isfile('%s/%s/gas_type.txt' % (ANALYSIS_RESULT_PATH, address)):
+                with open('%s/%s/gas_type.txt' % (ANALYSIS_RESULT_PATH, address), 'r') as f:
                     results = f.readlines()
                     gas_type = results[0].strip()
                     max_gas = results[1].strip()
@@ -119,35 +124,33 @@ def analyze():
                     node_num = results[3].strip()
                     edge_num = results[4].strip()
 
-                update_value = {'$set': {'status': 'checked', 'gas_type': gas_type, 'max_gas': max_gas, 'instruction_number': ins_num, 'node_number': node_num, 'edge_number': edge_num}}
-            elif os.path.isfile('/Users/Harrison/Desktop/contract-library/%s/error.txt' % address):
-                with open('/Users/Harrison/Desktop/contract-library/%s/error.txt' % address, 'r') as f:
+                update_value = {'$set': {'status': 'checked_1', 'gas_type': gas_type, 'max_gas': max_gas, 'instruction_number': ins_num, 'node_number': node_num, 'edge_number': edge_num}}
+            elif os.path.isfile('%s/%s/error.txt' % (ANALYSIS_RESULT_PATH, address)):
+                with open('%s/%s/error.txt' % (ANALYSIS_RESULT_PATH, address), 'r') as f:
                     error = f.read()
-                update_value = {'$set': {'status': 'error', 'gas_type': '', 'max_gas': '', 'instruction_number': '', 'node_number': '', 'edge_number': '', 'error': error}}
+                update_value = {'$set': {'status': 'loop_error', 'gas_type': '', 'max_gas': '', 'instruction_number': '', 'node_number': '', 'edge_number': '', 'error': error}}
             else:
-                update_value = {'$set': {'status': 'error', 'gas_type': '', 'max_gas': '', 'instruction_number': '', 'node_number': '', 'edge_number': '', 'error': None}}
+                update_value = {'$set': {'status': 'loop_error', 'gas_type': '', 'max_gas': '', 'instruction_number': '', 'node_number': '', 'edge_number': '', 'error': None}}
 
-            collection.update({'_id': address}, update_value)
+            collection.update_one({'_id': address}, update_value)
 
             call(['rm', file_path])
+        else:
+            print('No bytecode: %s' % address)
+            update_value = {'$set': {'status': 'no_bytecode'}}
+            collection.update_one({'_id': address}, update_value)
+        
+        contract = collection.find_one({'status': 'unchecked'})
 
 def fix_db():
-    check_list = collection.find()
+    check_list = collection.find({'status': 'loop_error'})
     for item in check_list:
         address = item['_id']
-        if os.path.isfile('/Users/Harrison/Desktop/contract-library/%s/%s.txt' % (address, address)):
-            with open('/Users/Harrison/Desktop/contract-library/%s/%s.txt' % (address, address), 'r') as f:
-                results = f.readlines()
-                ins_num = results[1].split(': ')[1].strip()
-                node_num = results[2].split(': ')[1].strip()
-                edge_num = results[3].split(': ')[1].strip()
-                max_gas = results[7].split(': ')[1].strip()
-            update_value = {'$set': {'max_gas': max_gas, 'instruction_number': ins_num, 'node_number': node_num, 'edge_number': edge_num}}
-            collection.update({'_id': address}, update_value)
+        print(address)
+        update_value = {'$set': {'status': 'checked', 'error': None}}
+        collection.update({'_id': address}, update_value)
 
 if __name__ == '__main__':
 	# contract_library()
-    # insert_check_list()
     analyze()
-    # insert_gas()
     # fix_db()

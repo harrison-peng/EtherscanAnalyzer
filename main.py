@@ -128,9 +128,9 @@ def analyze():
             elif os.path.isfile('%s/%s/error.txt' % (ANALYSIS_RESULT_PATH, address)):
                 with open('%s/%s/error.txt' % (ANALYSIS_RESULT_PATH, address), 'r') as f:
                     error = f.read()
-                update_value = {'$set': {'status': 'loop_error', 'gas_type': '', 'max_gas': '', 'instruction_number': '', 'node_number': '', 'edge_number': '', 'error': error}}
+                update_value = {'$set': {'status': 'error', 'gas_type': '', 'max_gas': '', 'instruction_number': '', 'node_number': '', 'edge_number': '', 'error': error}}
             else:
-                update_value = {'$set': {'status': 'loop_error', 'gas_type': '', 'max_gas': '', 'instruction_number': '', 'node_number': '', 'edge_number': '', 'error': None}}
+                update_value = {'$set': {'status': 'error', 'gas_type': '', 'max_gas': '', 'instruction_number': '', 'node_number': '', 'edge_number': '', 'error': None}}
 
             collection.update_one({'_id': address}, update_value)
 
@@ -143,12 +143,13 @@ def analyze():
         contract = collection.find_one({'status': 'unchecked'})
 
 def fix_db():
-    check_list = collection.find({'status': 'loop_error'})
-    for item in check_list:
-        address = item['_id']
+    contract = collection.find_one({'status': 'loop_error'})
+    while contract:
+        address = contract['_id']
+        update_value = {'$set': {'status': 'unchecked', 'error': None}}
+        collection.update_one({'_id': address}, update_value)
         print(address)
-        update_value = {'$set': {'status': 'checked', 'error': None}}
-        collection.update({'_id': address}, update_value)
+        contract = collection.find_one({'status': 'loop_error'})
 
 if __name__ == '__main__':
 	# contract_library()

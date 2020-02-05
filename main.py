@@ -142,6 +142,26 @@ def analyze():
         
         contract = collection.find_one({'status': 'unchecked'})
 
+def find_constant_info():
+    contract_list = collection.find({'gas_type': 'constant'}, no_cursor_timeout=True)
+    count = 0
+    gas_min = 10000
+    gas_max = 0
+    gas_sum = 0
+    for contract in contract_list:
+        gas = int(contract['max_gas'])
+        gas_max = gas if gas > gas_max else gas_max
+        gas_min = gas if gas < gas_min and gas > 0 else gas_min
+        gas_sum += gas
+        count += 1
+        if count % 50 == 0:
+            print(count)
+    contract_list.close()
+    print('Constant contract:', count)
+    print('Max gas:', gas_max)
+    print('Min gas:', gas_min)
+    print('Average gas:', gas_sum/count)
+
 def fix_db():
     contract = collection.find_one({'status': 'loop_error'})
     while contract:
@@ -153,5 +173,6 @@ def fix_db():
 
 if __name__ == '__main__':
 	# contract_library()
-    analyze()
+    # analyze()
     # fix_db()
+    find_constant_info()

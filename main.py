@@ -101,14 +101,16 @@ def insert_check_list():
             new_item = {'_id': address, 'check': 'unchecked', 'gas_type': '', 'bytecode': bytecode}
             resp = collection.insert(new_item)
 
-def analyze():
+def analyze(status):
     root_path = os.path.dirname(os.path.abspath(__file__))
-    contract = collection.find_one({'status': 'unchecked'})
+    contract = collection.find_one({'status': status})
     while contract:
         address = contract['_id']
         if contract['bytecode']:
             check = contract['status']
-            print(address)
+            print('+--------------------------------------------+')
+            print('|', address, '|')
+            print('+--------------------------------------------+')
             file_path = os.path.join(root_path, 'bytecode', '%s.hex' % address)
             with open(file_path, 'w') as f:
                 f.write(contract['bytecode'])
@@ -119,18 +121,19 @@ def analyze():
                 with open('%s/%s/gas_type.txt' % (ANALYSIS_RESULT_PATH, address), 'r') as f:
                     results = f.readlines()
                     gas_type = results[0].strip()
-                    max_gas = results[1].strip()
-                    ins_num = results[2].strip()
-                    node_num = results[3].strip()
-                    edge_num = results[4].strip()
+                    gas_formula = results[1].strip()
+                    max_gas = results[2].strip()
+                    ins_num = results[3].strip()
+                    node_num = results[4].strip()
+                    edge_num = results[5].strip()
 
-                update_value = {'$set': {'status': 'checked_1', 'gas_type': gas_type, 'max_gas': max_gas, 'instruction_number': ins_num, 'node_number': node_num, 'edge_number': edge_num}}
+                update_value = {'$set': {'status': 'checked_2', 'gas_type': gas_type, 'gas_formula': gas_formula, 'max_gas': max_gas, 'instruction_number': ins_num, 'node_number': node_num, 'edge_number': edge_num}}
             elif os.path.isfile('%s/%s/error.txt' % (ANALYSIS_RESULT_PATH, address)):
                 with open('%s/%s/error.txt' % (ANALYSIS_RESULT_PATH, address), 'r') as f:
                     error = f.read()
-                update_value = {'$set': {'status': 'error', 'gas_type': '', 'max_gas': '', 'instruction_number': '', 'node_number': '', 'edge_number': '', 'error': error}}
+                update_value = {'$set': {'status': 'error_1', 'gas_type': '', 'gas_formula': '', 'max_gas': '', 'instruction_number': '', 'node_number': '', 'edge_number': '', 'error': error}}
             else:
-                update_value = {'$set': {'status': 'error', 'gas_type': '', 'max_gas': '', 'instruction_number': '', 'node_number': '', 'edge_number': '', 'error': None}}
+                update_value = {'$set': {'status': 'error_1', 'gas_type': '', 'gas_formula': '', 'max_gas': '', 'instruction_number': '', 'node_number': '', 'edge_number': '', 'error': None}}
 
             collection.update_one({'_id': address}, update_value)
 
@@ -140,7 +143,8 @@ def analyze():
             update_value = {'$set': {'status': 'no_bytecode'}}
             collection.update_one({'_id': address}, update_value)
         
-        contract = collection.find_one({'status': 'unchecked'})
+        contract = collection.find_one({'status': status})
+        print('\n')
 
 def find_constant_info():
     contract_list = collection.find({'gas_type': 'constant'}, no_cursor_timeout=True)
@@ -171,8 +175,27 @@ def fix_db():
         print(address)
         contract = collection.find_one({'status': 'loop_error'})
 
+def fix():
+    query = {
+        "status": "unchecked",
+        "gas_type": "unbound",
+        "edge_number": "197",
+        "instruction_number": "2205",
+        "max_gas": "2397+3*BV2Int(Isize_344)+1228*BV2Int(loop_1830)",
+        "node_number": "192"
+    }
+    contract = collection.find_one(query)
+    while contract:
+        address = contract['_id']
+        update_value = {'$set': {'status': 'checked_2', 'gas_type': 'bound', 'gas_formula': '33009', 'max_gas': '33009', 'instruction_number': '2244', 'node_number': '195', 'edge_number': '217'}}
+        collection.update_one({'_id': address}, update_value)
+        print(address)
+        contract = collection.find_one(query)
+
+
 if __name__ == '__main__':
 	# contract_library()
-    # analyze()
+    analyze('unchecked')
     # fix_db()
-    find_constant_info()
+    # find_constant_info()
+    # fix()

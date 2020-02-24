@@ -61,7 +61,10 @@ def contract_library():
     base_url = 'https://contract-library.com/'
 
     for page in range(50,100):
-        driver = webdriver.Chrome('./chromedriver')
+        if OS_ENV == 'macos':
+            driver = webdriver.Chrome('./chromedriver')
+        else:
+            driver = webdriver.Firefox('./firefox-driver-linux')
         url = base_url + '?p=' + str(page+1)
         driver.get(url)
         time.sleep(3)

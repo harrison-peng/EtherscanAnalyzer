@@ -64,7 +64,7 @@ def contract_library():
         if OS_ENV == 'macos':
             driver = webdriver.Chrome('./chromedriver')
         else:
-            driver = webdriver.Firefox('./firefox-driver-linux')
+            driver = webdriver.Firefox(executable_path='./firefox-driver-linux')
         url = base_url + '?p=' + str(page+1)
         driver.get(url)
         time.sleep(3)

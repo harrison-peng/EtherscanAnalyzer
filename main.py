@@ -148,7 +148,7 @@ def analyze():
             with open(file_path, 'w') as f:
                 f.write(contract['bytecode'])
 
-            call(['python', '%s/main.py' % SMARTCONTRACTCFG_PATH, '-b', '-r', '-code', file_path, '-o', ANALYSIS_RESULT_PATH])
+            call([PYTHON_FORMAT, '%s/main.py' % SMARTCONTRACTCFG_PATH, '-b', '-r', '-code', file_path, '-o', ANALYSIS_RESULT_PATH])
             
             insert_new = False
             if os.path.isfile('%s/%s/info.json' % (ANALYSIS_RESULT_PATH, address)):
@@ -176,7 +176,6 @@ def analyze():
                     new_item['instruction_number'] = ins_num
                     new_item['node_number'] = node_num
                     new_item['edge_number'] = edge_num
-                    new_item['error'] = None
             else:
                 if os.path.isfile('%s/%s/error.txt' % (ANALYSIS_RESULT_PATH, address)):
                     with open('%s/%s/error.txt' % (ANALYSIS_RESULT_PATH, address), 'r') as f:

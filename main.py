@@ -148,7 +148,10 @@ def analyze():
             with open(file_path, 'w') as f:
                 f.write(contract['bytecode'])
 
-            call([PYTHON_FORMAT, '%s/main.py' % SMARTCONTRACTCFG_PATH, '-b', '-r', '-code', file_path, '-o', ANALYSIS_RESULT_PATH])
+            if OS_ENV == 'maacos':
+                call([PYTHON_FORMAT, '%s/main.py' % SMARTCONTRACTCFG_PATH, '-b', '-r', '-code', file_path, '-o', ANALYSIS_RESULT_PATH])
+            else:
+                call([PYTHON_FORMAT, '%s/main.py' % SMARTCONTRACTCFG_PATH, '-b', '-r', '-l', '-code', file_path, '-o', ANALYSIS_RESULT_PATH])
             
             insert_new = False
             if os.path.isfile('%s/%s/info.json' % (ANALYSIS_RESULT_PATH, address)):

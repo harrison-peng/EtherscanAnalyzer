@@ -165,8 +165,10 @@ def analyze():
                 contract = analyzed_collection.find_one(check_query)
 
                 if contract:
+                    info_message = 'Duplicate'
                     update_value = {'$set': {'status': 'duplicate', 'reference_contract': contract['_id']}}
                 else:
+                    info_message = 'Insert'
                     insert_new = True
                     update_value = {'$set': {'status': 'checked'}}
                     new_item['status'] = 'checked'
@@ -177,6 +179,7 @@ def analyze():
                     new_item['node_number'] = node_num
                     new_item['edge_number'] = edge_num
             else:
+                info_message = 'Error'
                 if os.path.isfile('%s/%s/error.txt' % (ANALYSIS_RESULT_PATH, address)):
                     with open('%s/%s/error.txt' % (ANALYSIS_RESULT_PATH, address), 'r') as f:
                         error = f.read()
@@ -194,8 +197,8 @@ def analyze():
             update_value = {'$set': {'status': 'no_bytecode'}}
             etherscan_collection.update_one({'_id': address}, update_value)
         
-        contract = etherscan_collection.find_one({'status': status})
-        print('\n')
+        logging.info('Contract Status: %s\n' % info_message)
+        contract = etherscan_collection.find_one({'status': 'unchecked'})
 
 def get_info(contract_type):
     contract_list = analyzed_collection.find({'gas_type': contract_type}, no_cursor_timeout=True)

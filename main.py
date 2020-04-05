@@ -21,6 +21,7 @@ db = client[DB_NAME]
 db.authenticate(DB_USER, DB_PASSWORD)
 analyzed_collection = db[ANALYZED_COLLECTION]
 etherscan_collection = db[ETHERSCAN_COLLECTION]
+root_path = os.path.dirname(os.path.abspath(__file__))
 
 def main():
     parser = argparse.ArgumentParser()
@@ -30,6 +31,8 @@ def main():
     parser.add_argument('-f', '--fix',dest='fix', help='fix the DB', action='store_true')
     parser.add_argument('-g', '--getinfo',dest='getinfo', help='get the infomation', action='store_true')
     parser.add_argument('-t', '--infotype',dest='infotype', help='the information type')
+    parser.add_argument('-u', '--unbounddetail',dest='unbounddetail', help='analyze unbound contracts', action='store_true')
+    parser.add_argument('-adr', '--address',dest='address', help='the address need to analyze')
 
     args = parser.parse_args()
 
@@ -44,6 +47,10 @@ def main():
             get_info(args.infotype)
         else:
             logging.error('Please input -t [constant/bound/unbound]')
+    elif args.unbounddetail:
+        unbound_detail()
+    elif args.address:
+        analyze_address(args.address)
     else:
         logging.error('Must use an argument. --help for the detail')
 
@@ -132,7 +139,6 @@ def insert_new_contract_to_db(address: str, bytecode: str) -> bool:
         return True
 
 def analyze():
-    root_path = os.path.dirname(os.path.abspath(__file__))
     contract = etherscan_collection.find_one({'status': 'unchecked'})
     while contract:
         address = contract['_id']
@@ -148,7 +154,7 @@ def analyze():
             with open(file_path, 'w') as f:
                 f.write(contract['bytecode'])
 
-            if OS_ENV == 'maacos':
+            if OS_ENV == 'macos':
                 call([PYTHON_FORMAT, '%s/main.py' % SMARTCONTRACTCFG_PATH, '-b', '-r', '-code', file_path, '-o', ANALYSIS_RESULT_PATH])
             else:
                 call([PYTHON_FORMAT, '%s/main.py' % SMARTCONTRACTCFG_PATH, '-b', '-r', '-l', '-code', file_path, '-o', ANALYSIS_RESULT_PATH])
@@ -203,6 +209,68 @@ def analyze():
         logging.info('Contract Status: %s\n' % info_message)
         contract = etherscan_collection.find_one({'status': 'unchecked'})
 
+def analyze_address(address):
+    contract = etherscan_collection.find_one({'_id': address})
+    bytecode = contract['bytecode']
+    print('+--------------------------------------------+')
+    print('|', address, '|')
+    print('+--------------------------------------------+')
+    file_path = os.path.join(root_path, 'bytecode', '%s.hex' % address)
+    with open(file_path, 'w') as f:
+        f.write(contract['bytecode'])
+
+    if OS_ENV == 'macos':
+        call([PYTHON_FORMAT, '%s/main.py' % SMARTCONTRACTCFG_PATH, '-b', '-r', '-code', file_path, '-o', ANALYSIS_RESULT_PATH])
+    else:
+        call([PYTHON_FORMAT, '%s/main.py' % SMARTCONTRACTCFG_PATH, '-b', '-r', '-l', '-code', file_path, '-o', ANALYSIS_RESULT_PATH])
+
+    insert_new = False
+    new_item = {
+        '_id': address,
+        'bytecode': contract['bytecode']
+    }
+    if os.path.isfile('%s/%s/info.json' % (ANALYSIS_RESULT_PATH, address)):
+        with open('%s/%s/info.json' % (ANALYSIS_RESULT_PATH, address), 'r') as f:
+            info = json.load(f)
+            gas_type = info['gas_type']
+            gas_formula = info['gas_formula']
+            max_gas = info['max_gas']
+            ins_num = info['ins_num']
+            node_num = info['node_num']
+            edge_num = info['edge_num']
+        
+        check_query = {'gas_type': gas_type, 'instruction_number': ins_num, 'node_number': node_num, 'edge_number': edge_num, 'max_gas': max_gas}
+        contract = analyzed_collection.find_one(check_query)
+
+        if contract:
+            info_message = 'Duplicate'
+            update_value = {'$set': {'status': 'duplicate', 'reference_contract': contract['_id']}}
+        else:
+            info_message = 'Insert'
+            insert_new = True
+            update_value = {'$set': {'status': 'checked'}}
+            new_item['status'] = 'checked'
+            new_item['gas_type'] = gas_type
+            new_item['gas_formula'] = gas_formula
+            new_item['max_gas'] = max_gas
+            new_item['instruction_number'] = ins_num
+            new_item['node_number'] = node_num
+            new_item['edge_number'] = edge_num
+    else:
+        info_message = 'Error'
+        if os.path.isfile('%s/%s/error.txt' % (ANALYSIS_RESULT_PATH, address)):
+            with open('%s/%s/error.txt' % (ANALYSIS_RESULT_PATH, address), 'r') as f:
+                error = f.read()
+        else:
+            error = None
+        update_value = {'$set': {'status': 'error', 'error_message': error}}
+
+    etherscan_collection.update_one({'_id': address}, update_value)
+    if insert_new:
+        analyzed_collection.insert_one(new_item)
+
+    call(['rm', file_path])
+
 def get_info(contract_type):
     contract_list = analyzed_collection.find({'gas_type': contract_type}, no_cursor_timeout=True)
     count = 0
@@ -211,34 +279,71 @@ def get_info(contract_type):
     gas_sum = 0
     for contract in contract_list:
         gas = int(contract['max_gas'])
-        gas_max = gas if gas > gas_max else gas_max
-        gas_min = gas if gas < gas_min and gas > 0 else gas_min
-        gas_sum += gas
-        count += 1
-        if count % 50 == 0:
-            print(count)
+        if gas < 10000000:
+            gas_max = gas if gas > gas_max else gas_max
+            gas_min = gas if gas < gas_min and gas > 0 else gas_min
+            gas_sum += gas
+            count += 1
+            if count % 50 == 0:
+                print(count)
+        else:
+            logging.warn('Gas Over Bound: %s - %s' % (contract['_id'], gas))
     contract_list.close()
-    logging.info('#Contract:', count)
-    logging.info('Max gas:', gas_max)
-    logging.info('Min gas:', gas_min)
-    logging.info('Average gas:', gas_sum/count)
+    logging.info('#Contract: %s' % count)
+    logging.info('Max gas: %s' % gas_max)
+    logging.info('Min gas: %s' % gas_min)
+    logging.info('Average gas: %s' % (gas_sum/count))
+
+def unbound_detail():
+    from selenium import webdriver
+    from selenium.common.exceptions import NoSuchElementException
+
+    if OS_ENV == 'macos':
+        driver = webdriver.Chrome('./chromedriver')
+    else:
+        driver = webdriver.Firefox(executable_path='./firefox-driver-linux')
+
+    contract_list = analyzed_collection.find(no_cursor_timeout=True)
+    count = 0
+    for contract in contract_list:
+        count += 1
+        address = contract['_id']
+        gas_type = contract['gas_type']
+        url = 'https://contract-library.com/contracts/Ethereum/' + address
+        driver.get(url)
+        time.sleep(2)
+        warning_list = list()
+        items = driver.find_elements_by_class_name('warning-name')
+        if len(items) > 0:
+            for item in items:
+                warning_list.append(item.text)
+            logging.info('%s [%s] Warning: %s' % (address, gas_type, ', '.join(warning_list)))
+        else:
+            logging.info('%s [%s] No Warning' % (address, gas_type))
+        if warning_list:
+            update_value = {'$set': {'madmax_warning': warning_list}}
+        else:
+            update_value = {'$set': {'madmax_warning': None}}
+        analyzed_collection.update_one({'_id': address}, update_value)
+    print(count)
+    driver.close()
 
 def fix():
-    query = {'status': 'checked'}
-    contract_list = analyzed_collection.find(query, no_cursor_timeout=True)
+    query = {'status': 'error'}
+    contract_list = etherscan_collection.find(query, no_cursor_timeout=True)
     for contract in contract_list:
-        max_gas = int(contract['max_gas']) if contract['max_gas'].isdigit() else contract['max_gas']
         address = contract['_id']
-        update_value = {
-            '$set': {
-                'instruction_number': int(contract['instruction_number']),
-                'max_gas': max_gas,
-                'node_number': int(contract['node_number']),
-                'edge_number': int(contract['edge_number'])
-            }
-        }
-        analyzed_collection.update_one({'_id': address}, update_value)
-        logging.info(address, update_value)
+        bytecode = contract['bytecode']
+        if bytecode == '0x':
+            etherscan_collection.update_one({'_id': address}, {
+                '$set': {
+                    'status': 'empty'
+                }
+            })
+            analyzed_collection.delete_one({'_id': address})
+            logging.info('%s update' % address)
+        else:
+            logging.info('%s error' % address)
 
 if __name__ == '__main__':
     main()

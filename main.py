@@ -177,6 +177,7 @@ def analyze():
                     info_message = 'Duplicate'
                     update_value = {'$set': {'status': 'duplicate', 'reference_contract': contract['_id']}}
                 else:
+                    madmax_warning = get_madmax_warning(address)
                     info_message = 'Insert'
                     insert_new = True
                     update_value = {'$set': {'status': 'checked'}}
@@ -187,6 +188,7 @@ def analyze():
                     new_item['instruction_number'] = ins_num
                     new_item['node_number'] = node_num
                     new_item['edge_number'] = edge_num
+                    new_item['madmax_warning'] = madmax_warning
             else:
                 info_message = 'Error'
                 if os.path.isfile('%s/%s/error.txt' % (ANALYSIS_RESULT_PATH, address)):
@@ -246,6 +248,7 @@ def analyze_address(address):
             info_message = 'Duplicate'
             update_value = {'$set': {'status': 'duplicate', 'reference_contract': contract['_id']}}
         else:
+            madmax_warning = get_madmax_warning(address)
             info_message = 'Insert'
             insert_new = True
             update_value = {'$set': {'status': 'checked'}}
@@ -256,6 +259,7 @@ def analyze_address(address):
             new_item['instruction_number'] = ins_num
             new_item['node_number'] = node_num
             new_item['edge_number'] = edge_num
+            new_item['madmax_warning'] = madmax_warning
     else:
         info_message = 'Error'
         if os.path.isfile('%s/%s/error.txt' % (ANALYSIS_RESULT_PATH, address)):
@@ -270,6 +274,28 @@ def analyze_address(address):
         analyzed_collection.insert_one(new_item)
 
     call(['rm', file_path])
+
+def get_madmax_warning(address):
+    from selenium import webdriver
+    from selenium.common.exceptions import NoSuchElementException
+
+    if OS_ENV == 'macos':
+        driver = webdriver.Chrome('./chromedriver')
+    else:
+        driver = webdriver.Firefox(executable_path='./firefox-driver-linux')
+    url = 'https://contract-library.com/contracts/Ethereum/' + address
+    driver.get(url)
+    time.sleep(2)
+    warning_list = list()
+    items = driver.find_elements_by_class_name('warning-name')
+    if len(items) > 0:
+        for item in items:
+            warning_list.append(item.text)
+        logging.info('%s [%s] Warning: %s' % (address, gas_type, ', '.join(warning_list)))
+    else:
+        logging.info('%s [%s] No Warning' % (address, gas_type))
+    driver.close()
+    return warning_list
 
 def get_info(contract_type):
     contract_list = analyzed_collection.find({'gas_type': contract_type}, no_cursor_timeout=True)

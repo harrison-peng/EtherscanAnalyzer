@@ -303,22 +303,27 @@ def get_info(contract_type):
     gas_min = 10000
     gas_max = 0
     gas_sum = 0
-    for contract in contract_list:
-        gas = int(contract['max_gas'])
-        if gas < 10000000:
-            gas_max = gas if gas > gas_max else gas_max
-            gas_min = gas if gas < gas_min and gas > 0 else gas_min
-            gas_sum += gas
+    if contract_type != 'unbound':
+        for contract in contract_list:
+            gas = int(contract['max_gas'])
+            if gas < 10000000:
+                gas_max = gas if gas > gas_max else gas_max
+                gas_min = gas if gas < gas_min and gas > 0 else gas_min
+                gas_sum += gas
+                count += 1
+                if count % 50 == 0:
+                    print(count)
+            else:
+                logging.warning('Gas Over Bound: %s - %s' % (contract['_id'], gas))
+    else:
+        for contract in contract_list:
             count += 1
-            if count % 50 == 0:
-                print(count)
-        else:
-            logging.warn('Gas Over Bound: %s - %s' % (contract['_id'], gas))
     contract_list.close()
     logging.info('#Contract: %s' % count)
-    logging.info('Max gas: %s' % gas_max)
-    logging.info('Min gas: %s' % gas_min)
-    logging.info('Average gas: %s' % (gas_sum/count))
+    if contract_type != 'unbound':
+        logging.info('Max gas: %s' % gas_max)
+        logging.info('Min gas: %s' % gas_min)
+        logging.info('Average gas: %s' % (gas_sum/count))
 
 def unbound_detail():
     from selenium import webdriver
@@ -329,7 +334,7 @@ def unbound_detail():
     else:
         driver = webdriver.Firefox(executable_path='./firefox-driver-linux')
 
-    contract_list = analyzed_collection.find(no_cursor_timeout=True)
+    contract_list = analyzed_collection.find({'gas_type': 'unbound'}, no_cursor_timeout=True)
     count = 0
     for contract in contract_list:
         count += 1

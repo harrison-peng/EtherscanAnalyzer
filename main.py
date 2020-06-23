@@ -33,6 +33,7 @@ def main():
     parser.add_argument('-t', '--infotype',dest='infotype', help='the information type')
     parser.add_argument('-u', '--unbounddetail',dest='unbounddetail', help='analyze unbound contracts', action='store_true')
     parser.add_argument('-adr', '--address',dest='address', help='the address need to analyze')
+    parser.add_argument('-d', '--download',dest='download', help='the gas type contracts to be downloaded')
 
     args = parser.parse_args()
 
@@ -51,6 +52,8 @@ def main():
         unbound_detail()
     elif args.address:
         analyze_address(args.address)
+    elif args.download:
+        download_contract(args.download)
     else:
         logging.error('Must use an argument. --help for the detail')
 
@@ -375,6 +378,15 @@ def fix():
             logging.info('%s update' % address)
         else:
             logging.info('%s error' % address)
+
+def download_contract(contract_type):
+    directory = '/Users/Harrison/Desktop/Etherscan-%s' % contract_type
+    if not os.path.exists(directory):
+        os.mkdir(directory)
+    contract_list = analyzed_collection.find({'gas_type': contract_type}, no_cursor_timeout=True)
+    for contract in contract_list:
+        with open('%s/%s.hex' % (directory, contract['_id']), 'w') as f:
+            f.write(contract['bytecode'])
 
 if __name__ == '__main__':
     main()

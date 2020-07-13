@@ -34,6 +34,7 @@ def main():
     parser.add_argument('-u', '--unbounddetail',dest='unbounddetail', help='analyze unbound contracts', action='store_true')
     parser.add_argument('-adr', '--address',dest='address', help='the address need to analyze')
     parser.add_argument('-d', '--download',dest='download', help='the gas type contracts to be downloaded')
+    parser.add_argument('-m', '--madmax-analyze',dest='madmax', help='get the madmax warning')
 
     args = parser.parse_args()
 
@@ -54,6 +55,8 @@ def main():
         analyze_address(args.address)
     elif args.download:
         download_contract(args.download)
+    elif args.madmax:
+        madmax_analyze(args.madmax)
     else:
         logging.error('Must use an argument. --help for the detail')
 
@@ -294,9 +297,9 @@ def get_madmax_warning(address):
     if len(items) > 0:
         for item in items:
             warning_list.append(item.text)
-        logging.info('%s [%s] Warning: %s' % (address, gas_type, ', '.join(warning_list)))
+        logging.info('[%s] Warning: %s' % (address, ', '.join(warning_list)))
     else:
-        logging.info('%s [%s] No Warning' % (address, gas_type))
+        logging.info('[%s] No Warning' % address)
     driver.close()
     return warning_list
 
@@ -387,6 +390,17 @@ def download_contract(contract_type):
     for contract in contract_list:
         with open('%s/%s.hex' % (directory, contract['_id']), 'w') as f:
             f.write(contract['bytecode'])
+
+def madmax_analyze(gas_type):
+    contract_list = analyzed_collection.find({'gas_type': gas_type}, no_cursor_timeout=True)
+    for contract in contract_list:
+        address = contract['_id']
+        madmax_warning = contract.get('madmax_warning', None)
+        if madmax_warning is None:
+            # print(address, madmax_warning)
+            madmax_warning = get_madmax_warning(address)
+            update_value = {'$set': {'madmax_warning': madmax_warning}}
+            analyzed_collection.update_one({'_id': address}, update_value)
 
 if __name__ == '__main__':
     main()

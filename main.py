@@ -35,6 +35,8 @@ def main():
     parser.add_argument('-adr', '--address',dest='address', help='the address need to analyze')
     parser.add_argument('-d', '--download',dest='download', help='the gas type contracts to be downloaded')
     parser.add_argument('-m', '--madmax-analyze',dest='madmax', help='get the madmax warning')
+    parser.add_argument('-mi', '--madmax-info',dest='madmaxinfo', help='get the madmax warning information')
+    parser.add_argument('-gi', '--gastap-info',dest='gastapinfo', help='get the gastap information')
 
     args = parser.parse_args()
 
@@ -57,6 +59,10 @@ def main():
         download_contract(args.download)
     elif args.madmax:
         madmax_analyze(args.madmax)
+    elif args.madmaxinfo:
+        get_madmax_info(args.madmaxinfo)
+    elif args.gastapinfo:
+        get_gastap_info(args.gastapinfo)
     else:
         logging.error('Must use an argument. --help for the detail')
 
@@ -401,6 +407,82 @@ def madmax_analyze(gas_type):
             madmax_warning = get_madmax_warning(address)
             update_value = {'$set': {'madmax_warning': madmax_warning}}
             analyzed_collection.update_one({'_id': address}, update_value)
+
+def get_gastap_info(gas_type):
+    contract_list = analyzed_collection.find({'gas_type': gas_type}, no_cursor_timeout=True)
+    count = 0
+    count_error = 0
+    count_timeout = 0
+    count_terminable = 0
+    count_unterminable = 0
+    count_lost_info = 0
+    for contract in contract_list:
+        count += 1
+        address = contract['_id']
+        gastap = contract.get('Gastap', None)
+        if gastap:
+            gastap_status = gastap['Status']
+            if gastap_status == 'Error':
+                count_error += 1
+            elif gastap_status == 'Timeout':
+                count_timeout += 1
+            elif gastap_status == 'OK':
+                termination = contract['Gastap']['Termination']
+                if termination:
+                    count_terminable += 1
+                    gas = contract['Gastap']['Opcode_gas']
+                    if 'unknown' in gas or 'maximize_failed' in gas or 'no_rf' in gas or 'failed(cover_point)' in gas:
+                        count_lost_info += 1
+                    # else:
+                    #     print(gas)
+                else:
+                    count_unterminable += 1
+            else:
+                print('[%s] Error: %s' % (address, contract['Gastap']))
+        else:
+            print('[%s] Error: None' % address)
+    print('[Count]:', count)
+    print('[Count Error]:', count_error)
+    print('[Count Timeout]:', count_timeout)
+    print('[Count Terminable]:', count_terminable)
+    print('[Count Lost Info]:', count_lost_info)
+    print('[Count Unterminable]:', count_unterminable)
+
+def get_madmax_info(gas_type):
+    contract_list = analyzed_collection.find({'gas_type': gas_type}, no_cursor_timeout=True)
+    count = 0
+    count_reported = 0
+    count_not_exist = 0
+    count_Unbounded = 0
+    count_Overflow = 0
+    count_TwinCalls = 0
+    count_Tainted = 0
+    for contract in contract_list:
+        count += 1
+        address = contract['_id']
+        madmax_warning = contract.get('madmax_warning', 'not_eist')
+        if madmax_warning == 'not_eist':
+            count_not_exist += 1
+        else:
+            if madmax_warning:
+                if 'TwinCalls' in madmax_warning or 'DoS (Unbounded Operation)' in madmax_warning or 'DoS (Induction Variable Overflow)' in madmax_warning or 'Tainted Ether Value' in madmax_warning:
+                    count_reported += 1
+                    if 'TwinCalls' in madmax_warning:
+                        count_TwinCalls += 1
+                    if 'DoS (Unbounded Operation)' in madmax_warning:
+                        count_Unbounded += 1
+                    if 'DoS (Induction Variable Overflow)' in madmax_warning:
+                        count_Overflow += 1
+                    if 'Tainted Ether Value' in madmax_warning:
+                        count_Tainted += 1
+                print('[%s]: %s' % (address, madmax_warning))
+    print('[Count]:', count)
+    print('[Count Reported]:', count_reported)
+    print('[Count TwinCalls]:', count_TwinCalls)
+    print('[Count Overflow]:', count_Overflow)
+    print('[Count Unbounded]:', count_Unbounded)
+    print('[Count Tainted]:', count_Tainted)
+    print('[Count Not exist]:', count_not_exist)
 
 if __name__ == '__main__':
     main()

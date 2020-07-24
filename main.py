@@ -239,6 +239,7 @@ def analyze_address(address):
         call([PYTHON_FORMAT, '%s/main.py' % SMARTCONTRACTCFG_PATH, '-b', '-r', '-l', '-code', file_path, '-o', ANALYSIS_RESULT_PATH])
 
     insert_new = False
+    update = False
     new_item = {
         '_id': address,
         'bytecode': contract['bytecode']
@@ -260,18 +261,33 @@ def analyze_address(address):
             info_message = 'Duplicate'
             update_value = {'$set': {'status': 'duplicate', 'reference_contract': contract['_id']}}
         else:
-            madmax_warning = get_madmax_warning(address)
-            info_message = 'Insert'
-            insert_new = True
+            analyzed_existed = analyzed_collection.find_one({'_id': address})
             update_value = {'$set': {'status': 'checked'}}
-            new_item['status'] = 'checked'
-            new_item['gas_type'] = gas_type
-            new_item['gas_formula'] = gas_formula
-            new_item['max_gas'] = max_gas
-            new_item['instruction_number'] = ins_num
-            new_item['node_number'] = node_num
-            new_item['edge_number'] = edge_num
-            new_item['madmax_warning'] = madmax_warning
+            if analyzed_existed:
+                update = True
+                info_message = 'Update'
+                analyzed_update_value = {
+                    '$set': {
+                        'gas_type': gas_type,
+                        'gas_formula': gas_formula,
+                        'max_gas': max_gas,
+                        'instruction_number': ins_num,
+                        'node_number': node_num,
+                        'edge_number': edge_num
+                    }
+                }
+            else:
+                madmax_warning = get_madmax_warning(address)
+                info_message = 'Insert'
+                insert_new = True
+                new_item['status'] = 'checked'
+                new_item['gas_type'] = gas_type
+                new_item['gas_formula'] = gas_formula
+                new_item['max_gas'] = max_gas
+                new_item['instruction_number'] = ins_num
+                new_item['node_number'] = node_num
+                new_item['edge_number'] = edge_num
+                new_item['madmax_warning'] = madmax_warning
     else:
         info_message = 'Error'
         if os.path.isfile('%s/%s/error.txt' % (ANALYSIS_RESULT_PATH, address)):
@@ -284,6 +300,8 @@ def analyze_address(address):
     etherscan_collection.update_one({'_id': address}, update_value)
     if insert_new:
         analyzed_collection.insert_one(new_item)
+    if update:
+        analyzed_collection.update_one({'_id': address}, analyzed_update_value)
 
     call(['rm', file_path])
 
@@ -416,6 +434,7 @@ def get_gastap_info(gas_type):
     count_terminable = 0
     count_unterminable = 0
     count_lost_info = 0
+    unterminable_list = list()
     for contract in contract_list:
         count += 1
         address = contract['_id']
@@ -437,6 +456,7 @@ def get_gastap_info(gas_type):
                     #     print(gas)
                 else:
                     count_unterminable += 1
+                    unterminable_list.append(address)
             else:
                 print('[%s] Error: %s' % (address, contract['Gastap']))
         else:
@@ -447,6 +467,7 @@ def get_gastap_info(gas_type):
     print('[Count Terminable]:', count_terminable)
     print('[Count Lost Info]:', count_lost_info)
     print('[Count Unterminable]:', count_unterminable)
+    print('[Unterminable Address]:', unterminable_list)
 
 def get_madmax_info(gas_type):
     contract_list = analyzed_collection.find({'gas_type': gas_type}, no_cursor_timeout=True)
@@ -457,6 +478,10 @@ def get_madmax_info(gas_type):
     count_Overflow = 0
     count_TwinCalls = 0
     count_Tainted = 0
+    unbounded_list = list()
+    overflow_list = list()
+    twinCalls_list = list()
+    tainted_list = list()
     for contract in contract_list:
         count += 1
         address = contract['_id']
@@ -469,13 +494,17 @@ def get_madmax_info(gas_type):
                     count_reported += 1
                     if 'TwinCalls' in madmax_warning:
                         count_TwinCalls += 1
+                        twinCalls_list.append(address)
                     if 'DoS (Unbounded Operation)' in madmax_warning:
                         count_Unbounded += 1
+                        unbounded_list.append(address)
                     if 'DoS (Induction Variable Overflow)' in madmax_warning:
                         count_Overflow += 1
+                        overflow_list.append(address)
                     if 'Tainted Ether Value' in madmax_warning:
                         count_Tainted += 1
-                print('[%s]: %s' % (address, madmax_warning))
+                        tainted_list.append(address)
+                # print('[%s]: %s' % (address, madmax_warning))
     print('[Count]:', count)
     print('[Count Reported]:', count_reported)
     print('[Count TwinCalls]:', count_TwinCalls)
@@ -483,6 +512,10 @@ def get_madmax_info(gas_type):
     print('[Count Unbounded]:', count_Unbounded)
     print('[Count Tainted]:', count_Tainted)
     print('[Count Not exist]:', count_not_exist)
+    print('[Unbounded Contracts]:', unbounded_list)
+    print('[Overflow Contracts]:', overflow_list)
+    print('[Tainted Contracts]:', tainted_list)
+    print('[TwinCalls Contracts]:', twinCalls_list)
 
 if __name__ == '__main__':
     main()

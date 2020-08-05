@@ -470,17 +470,19 @@ def get_gastap_info(gas_type):
     print('[Unterminable Address]:', unterminable_list)
 
 def get_madmax_info(gas_type):
-    contract_list = analyzed_collection.find({'gas_type': gas_type}, no_cursor_timeout=True)
+    if gas_type == 'failed':
+        contract_list = analyzed_collection.find({'status': 'failed'}, no_cursor_timeout=True)
+    else:
+        contract_list = analyzed_collection.find({'status': 'checked', 'gas_type': gas_type}, no_cursor_timeout=True)
     count = 0
     count_reported = 0
     count_not_exist = 0
     count_Unbounded = 0
     count_Overflow = 0
-    count_TwinCalls = 0
+    count_nonreported = 0
     count_Tainted = 0
     unbounded_list = list()
     overflow_list = list()
-    twinCalls_list = list()
     tainted_list = list()
     for contract in contract_list:
         count += 1
@@ -490,24 +492,23 @@ def get_madmax_info(gas_type):
             count_not_exist += 1
         else:
             if madmax_warning:
-                if 'TwinCalls' in madmax_warning or 'DoS (Unbounded Operation)' in madmax_warning or 'DoS (Induction Variable Overflow)' in madmax_warning or 'Tainted Ether Value' in madmax_warning:
+                if 'DoS (Unbounded Operation)' in madmax_warning or 'DoS (Induction Variable Overflow)' in madmax_warning or 'Tainted Ether Value' in madmax_warning or 'Tainted Owner Variable' in madmax_warning or 'Tainted delegatecall' in madmax_warning or 'Tainted selfdestruct' in madmax_warning or 'Tainted Storage Index' in madmax_warning:
                     count_reported += 1
-                    if 'TwinCalls' in madmax_warning:
-                        count_TwinCalls += 1
-                        twinCalls_list.append(address)
                     if 'DoS (Unbounded Operation)' in madmax_warning:
                         count_Unbounded += 1
                         unbounded_list.append(address)
                     if 'DoS (Induction Variable Overflow)' in madmax_warning:
                         count_Overflow += 1
                         overflow_list.append(address)
-                    if 'Tainted Ether Value' in madmax_warning:
+                    if 'Tainted Ether Value' in madmax_warning or 'Tainted Owner Variable' in madmax_warning or 'Tainted delegatecall' in madmax_warning or 'Tainted selfdestruct' in madmax_warning or 'Tainted Storage Index' in madmax_warning:
                         count_Tainted += 1
                         tainted_list.append(address)
+                else:
+                    count_nonreported += 1
                 # print('[%s]: %s' % (address, madmax_warning))
     print('[Count]:', count)
     print('[Count Reported]:', count_reported)
-    print('[Count TwinCalls]:', count_TwinCalls)
+    print('[Count NonReported]:', count_nonreported)
     print('[Count Overflow]:', count_Overflow)
     print('[Count Unbounded]:', count_Unbounded)
     print('[Count Tainted]:', count_Tainted)
@@ -515,7 +516,6 @@ def get_madmax_info(gas_type):
     print('[Unbounded Contracts]:', unbounded_list)
     print('[Overflow Contracts]:', overflow_list)
     print('[Tainted Contracts]:', tainted_list)
-    print('[TwinCalls Contracts]:', twinCalls_list)
 
 if __name__ == '__main__':
     main()
